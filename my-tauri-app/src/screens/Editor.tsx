@@ -1,27 +1,39 @@
+// src/screens/Editor.tsx
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import { CanvasScene } from '../components/CanvasScene';
+import type { LineAlg } from '../lib/raster/RasterRenderer';
 
 const Editor = () => {
     const { id } = useParams<{ id: string }>();
-    // возврат на предыдущую страницу
     const navigate = useNavigate();
-    // Функция возврата в галерею
-    const goBack = () => {
-        navigate('/');
-    };
-    // Функция сохранения
+    const isNewProject = id === 'new';
+    const projectTitle = isNewProject ? 'Новый проект' : `Редактирование проекта #${id}`;
+
+    const [lineAlg, setLineAlg] = useState<LineAlg>('bresenham');
+
+    const goBack = () => navigate('/');
+
     const saveProject = () => {
         console.log('Проект сохранен!', { id });
-        alert(`Проект ${id === 'new' ? ' создан' : 'сохранен'}!`);
+        alert(`Проект ${isNewProject ? 'создан' : 'сохранен'}!`);
     };
 
     return (
-        <div style={{
-            height: '100vh',
-            display: 'flex',
-            flexDirection: 'column',
-            backgroundColor: '#0f172a'
-        }}>
-            {/* Верхняя панел */}
+        <motion.div
+            style={{
+                height: '100vh',
+                display: 'flex',
+                flexDirection: 'column',
+                backgroundColor: '#0f172a'
+            }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+        >
+            {/* Верхняя панель */}
             <header style={{
                 height: '56px',
                 borderBottom: '1px solid #334155',
@@ -42,7 +54,10 @@ const Editor = () => {
                             cursor: 'pointer',
                             padding: '0.5rem',
                             borderRadius: '0.375rem',
-                            transition: 'all 0.2s'
+                            transition: 'all 0.2s',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem'
                         }}
                         onMouseEnter={(e) => {
                             e.currentTarget.style.backgroundColor = '#334155';
@@ -61,41 +76,86 @@ const Editor = () => {
                         fontWeight: '500',
                         color: '#f1f5f9'
                     }}>
-                        {id === 'new' ? '🌸 Новый проект' : `🌸 Редактирование проекта #${id}`}
+                        {projectTitle}
                     </h2>
                 </div>
 
-                <button
-                    onClick={saveProject}
-                    style={{
-                        backgroundColor: '#3b82f6',
-                        color: 'white',
-                        border: 'none',
-                        padding: '0.5rem 1rem',
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    {/* Переключатель алгоритмов линий */}
+                    <div style={{
+                        display: 'flex',
+                        gap: '0.25rem',
+                        backgroundColor: '#0f172a',
                         borderRadius: '0.5rem',
-                        fontSize: '0.875rem',
-                        fontWeight: '500',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s'
-                    }}
-                    onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = '#2563eb';
-                    }}
-                    onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = '#3b82f6';
-                    }}
-                >
-                    🌸 Сохранить
-                </button>
+                        padding: '0.25rem'
+                    }}>
+                        <button
+                            onClick={() => setLineAlg('bresenham')}
+                            style={{
+                                padding: '0.375rem 0.75rem',
+                                borderRadius: '0.375rem',
+                                fontSize: '0.75rem',
+                                fontWeight: '500',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s',
+                                backgroundColor: lineAlg === 'bresenham' ? '#3b82f6' : 'transparent',
+                                color: lineAlg === 'bresenham' ? 'white' : '#94a3b8',
+                                border: 'none'
+                            }}
+                        >
+                            Брезенхем
+                        </button>
+                        <button
+                            onClick={() => setLineAlg('wu')}
+                            style={{
+                                padding: '0.375rem 0.75rem',
+                                borderRadius: '0.375rem',
+                                fontSize: '0.75rem',
+                                fontWeight: '500',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s',
+                                backgroundColor: lineAlg === 'wu' ? '#3b82f6' : 'transparent',
+                                color: lineAlg === 'wu' ? 'white' : '#94a3b8',
+                                border: 'none'
+                            }}
+                        >
+                            Ву (сглаживание)
+                        </button>
+                    </div>
+
+                    {/* Кнопка сохранения */}
+                    <button
+                        onClick={saveProject}
+                        style={{
+                            backgroundColor: '#3b82f6',
+                            color: 'white',
+                            border: 'none',
+                            padding: '0.5rem 1rem',
+                            borderRadius: '0.5rem',
+                            fontSize: '0.875rem',
+                            fontWeight: '500',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = '#2563eb';
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = '#3b82f6';
+                        }}
+                    >
+                        Сохранить
+                    </button>
+                </div>
             </header>
 
-            {/* Основная */}
+            {/* Основная область */}
             <div style={{
                 display: 'flex',
                 flex: 1,
                 overflow: 'hidden'
             }}>
-                {/* Левая панель */}
+                {/* Левая панель инструментов */}
                 <aside style={{
                     width: '64px',
                     borderRight: '1px solid #334155',
@@ -106,113 +166,59 @@ const Editor = () => {
                     padding: '1rem 0',
                     gap: '0.75rem'
                 }}>
-                    <button
-                        style={{
-                            width: '40px',
-                            height: '40px',
-                            backgroundColor: '#334155',
-                            border: 'none',
-                            borderRadius: '0.5rem',
-                            color: '#94a3b8',
-                            fontSize: '1.25rem',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s'
-                        }}
-                        onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = '#475569';
-                            e.currentTarget.style.color = 'white';
-                            e.currentTarget.style.transform = 'scale(1.05)';
-                        }}
-                        onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = '#334155';
-                            e.currentTarget.style.color = '#94a3b8';
-                            e.currentTarget.style.transform = 'scale(1)';
-                        }}
-                    >
-                        🌸
+                    <button style={{
+                        width: '40px',
+                        height: '40px',
+                        backgroundColor: '#334155',
+                        border: 'none',
+                        borderRadius: '0.5rem',
+                        color: '#94a3b8',
+                        fontSize: '1.25rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                    }}>
+                        🖱️
                     </button>
-
-                    <button
-                        style={{
-                            width: '40px',
-                            height: '40px',
-                            backgroundColor: '#334155',
-                            border: 'none',
-                            borderRadius: '0.5rem',
-                            color: '#94a3b8',
-                            fontSize: '1.25rem',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s'
-                        }}
-                        onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = '#475569';
-                            e.currentTarget.style.color = 'white';
-                            e.currentTarget.style.transform = 'scale(1.05)';
-                        }}
-                        onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = '#334155';
-                            e.currentTarget.style.color = '#94a3b8';
-                            e.currentTarget.style.transform = 'scale(1)';
-                        }}
-                    >
-                        🌸
+                    <button style={{
+                        width: '40px',
+                        height: '40px',
+                        backgroundColor: '#334155',
+                        border: 'none',
+                        borderRadius: '0.5rem',
+                        color: '#94a3b8',
+                        fontSize: '1.25rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                    }}>
+                        📐
                     </button>
-
-                    <button
-                        style={{
-                            width: '40px',
-                            height: '40px',
-                            backgroundColor: '#334155',
-                            border: 'none',
-                            borderRadius: '0.5rem',
-                            color: '#94a3b8',
-                            fontSize: '1.25rem',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s'
-                        }}
-                        onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = '#475569';
-                            e.currentTarget.style.color = 'white';
-                            e.currentTarget.style.transform = 'scale(1.05)';
-                        }}
-                        onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = '#334155';
-                            e.currentTarget.style.color = '#94a3b8';
-                            e.currentTarget.style.transform = 'scale(1)';
-                        }}
-                    >
-                        🌸
+                    <button style={{
+                        width: '40px',
+                        height: '40px',
+                        backgroundColor: '#334155',
+                        border: 'none',
+                        borderRadius: '0.5rem',
+                        color: '#94a3b8',
+                        fontSize: '1.25rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                    }}>
+                        🔵
                     </button>
                 </aside>
 
-                {/* Центральная зона */}
+                {/* Центральная зона с Canvas */}
                 <main style={{
                     flex: 1,
                     backgroundColor: '#e2e8f0',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '2rem'
+                    padding: 0,
+                    margin: 0,
+                    overflow: 'hidden'
                 }}>
-                    <div style={{
-                        backgroundColor: 'white',
-                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.2)',
-                        borderRadius: '0.5rem',
-                        width: '100%',
-                        height: '100%',
-                        maxWidth: '1024px',
-                        maxHeight: 'calc(100vh - 120px)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: '#94a3b8',
-                        fontSize: '1rem'
-                    }}>
-                        🌸 Тут будут каляки боляки
-                    </div>
+                    <CanvasScene lineAlg={lineAlg} />
                 </main>
 
-                {/* Правая панель (Свойства) */}
+                {/* Правая панель свойств */}
                 <aside style={{
                     width: '256px',
                     borderLeft: '1px solid #334155',
@@ -232,7 +238,7 @@ const Editor = () => {
                         color: '#64748b',
                         lineHeight: '1.5'
                     }}>
-                        Здесь будет что-то
+                        Выберите объект на холсте для редактирования свойств.
                     </p>
 
                     <div style={{
@@ -254,10 +260,17 @@ const Editor = () => {
                         }}>
                             ID: {id}
                         </div>
+                        <div style={{
+                            fontSize: '0.75rem',
+                            color: '#cbd5e1',
+                            marginTop: '0.5rem'
+                        }}>
+                            Алгоритм: {lineAlg === 'wu' ? 'Сглаженные линии (Ву)' : 'Чёткие линии (Брезенхем)'}
+                        </div>
                     </div>
                 </aside>
             </div>
-        </div>
+        </motion.div>
     );
 };
 

@@ -116,14 +116,20 @@ export class RasterRenderer {
     }
 
     resize() {
-        const rect = this.canvas.getBoundingClientRect();
-        this.width = Math.max(1, Math.floor(rect.width));
-        this.height = Math.max(1, Math.floor(rect.height));
+        const container = this.canvas.parentElement;
+        if (!container) return;
 
-        console.log(`resize: width=${this.width}, height=${this.height}`);
+        const rect = container.getBoundingClientRect();
+        // this.dpr = window.devicePixelRatio || 1;
+        this.dpr = window.devicePixelRatio || 1;
+
+        this.width = Math.floor(rect.width * this.dpr);
+        this.height = Math.floor(rect.height * this.dpr);
 
         this.canvas.width = this.width;
         this.canvas.height = this.height;
+        this.canvas.style.width = `${rect.width}px`;
+        this.canvas.style.height = `${rect.height}px`;
 
         this.imageData = new ImageData(this.width, this.height);
         this.buf = this.imageData.data;

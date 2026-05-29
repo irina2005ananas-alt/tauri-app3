@@ -1,6 +1,9 @@
-// src/components/CanvasScene.tsx
 import { useEffect, useRef, useState } from 'react';
 import { RasterRenderer, type LineAlg, type RGBA } from '../lib/raster/RasterRenderer';
+import { Rect } from '../lib/shapes/Rect';
+import { Line } from '../lib/shapes/Line';
+import { Oval } from '../lib/shapes/Oval';
+import type { Shape } from '../lib/shapes/Shape';
 
 interface CanvasSceneProps {
     lineAlg: LineAlg;
@@ -10,7 +13,93 @@ export const CanvasScene = ({ lineAlg }: CanvasSceneProps) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const rendererRef = useRef<RasterRenderer | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const shapesRef = useRef<Shape[]>([]);
+    const [selectedId, setSelectedId] = useState<string | null>(null);
     const [debug, setDebug] = useState('');
+
+    // Инициализация фигур
+    useEffect(() => {
+        // Прямоугольник синий (полупрозрачный)
+        const rect = new Rect(120, 80);
+        rect.transform.x = 300;
+        rect.transform.y = 200;
+        rect.fillStyle = '#3b82f6';
+        rect.fillOpacity = 0.6;
+        rect.strokeStyle = '#ffffff';
+        rect.strokeWidth = 3;
+
+        // Линия оранжевая (повернутая)
+        const line = new Line(-60, 0, 60, 0);
+        line.transform.x = 550;
+        line.transform.y = 250;
+        line.transform.rotation = Math.PI / 4;
+        line.strokeStyle = '#ff8800';
+        line.strokeWidth = 8;
+        line.strokeOpacity = 1;
+
+        // Овал зеленый
+        const oval = new Oval(70, 45);
+        oval.transform.x = 450;
+        oval.transform.y = 400;
+        oval.transform.scaleX = 1.2;
+        oval.transform.scaleY = 0.8;
+        oval.fillStyle = '#10b981';
+        oval.fillOpacity = 0.5;
+        oval.strokeStyle = '#ffffff';
+        oval.strokeWidth = 2;
+
+        // Прямоугольник красный
+        const rect2 = new Rect(100, 100);
+        rect2.transform.x = 150;
+        rect2.transform.y = 450;
+        rect2.fillStyle = '#ef4444';
+        rect2.fillOpacity = 0.5;
+        rect2.strokeStyle = '#ffffff';
+        rect2.strokeWidth = 2;
+
+        shapesRef.current = [rect, line, oval, rect2];
+    }, []);
+
+    // Обработка клика по холсту
+    const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        const canvas = canvasRef.current;
+        const renderer = rendererRef.current;
+        if (!canvas || !renderer) return;
+
+        // Получаем размеры и масштаб
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = renderer.width / rect.width;
+        const scaleY = renderer.height / rect.height;
+
+        // Координаты мыши в физических пикселях
+        const mouseX = (e.clientX - rect.left) * scaleX;
+        const mouseY = (e.clientY - rect.top) * scaleY;
+
+        console.log('Click at:', { mouseX, mouseY, rendererSize: { w: renderer.width, h: renderer.height } });
+
+        // Проверяем попадание в фигуры
+        let hitId: string | null = null;
+        for (let i = shapesRef.current.length - 1; i >= 0; i--) {
+            const shape = shapesRef.current[i];
+            const hit = shape.hitTest(mouseX, mouseY);
+            console.log(`Shape ${shape.id.slice(0,8)} hit: ${hit}`);
+            if (hit) {
+                hitId = shape.id;
+                break;
+            }
+        }
+
+        setSelectedId(hitId);
+        setDebug(`Клик: (${Math.round(mouseX)}, ${Math.round(mouseY)}) | Выбрано: ${hitId?.slice(0, 8) || 'нет'}`);
+    };
+
+    // Обновление алгоритма линий у рендерера
+    useEffect(() => {
+        const renderer = rendererRef.current;
+        if (renderer) {
+            renderer.setLineAlgorithm(lineAlg);
+        }
+    }, [lineAlg]);
 
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -23,10 +112,15 @@ export const CanvasScene = ({ lineAlg }: CanvasSceneProps) => {
 
         const doResize = () => {
             renderer.resize();
-            setDebug(`w=${renderer.width}, h=${renderer.height}`);
+            setDebug(prev => {
+                const info = `w=${renderer.width}, h=${renderer.height}`;
+                return prev.includes(info) ? prev : info;
+            });
         };
 
         doResize();
+
+        // Несколько resize для надежности
         setTimeout(doResize, 100);
         setTimeout(doResize, 500);
 
@@ -37,124 +131,32 @@ export const CanvasScene = ({ lineAlg }: CanvasSceneProps) => {
 
         let animationId: number;
 
-        const drawPolyline = (r: RasterRenderer, points: { x: number; y: number }[], color: RGBA, width: number) => {
-            if (points.length < 2) return;
-            for (let i = 0; i < points.length - 1; i++) {
-                r.strokeLine(points[i].x, points[i].y, points[i + 1].x, points[i + 1].y, color, width);
-            }
-        };
-
         const frame = () => {
             const r = rendererRef.current;
             if (r && r.width > 0 && r.height > 0) {
                 r.beginFrame(true);
 
-                const w = r.width;
-                const h = r.height;
-                const cx = w / 2;
-                const cy = h / 2;
+                // Рисуем все фигуры
+                for (const shape of shapesRef.current) {
+                    shape.drawRaster(r);
+                }
 
-                const red: RGBA = { r: 255, g: 0, b: 0, a: 255 };
-                const semiRed: RGBA = { r: 255, g: 0, b: 0, a: 128 };
-                const white: RGBA = { r: 255, g: 255, b: 255, a: 255 };
-                const blue: RGBA = { r: 0, g: 0, b: 255, a: 255 };
-                const solidBlue: RGBA = { r: 0, g: 0, b: 255, a: 255 };
-                const orange: RGBA = { r: 255, g: 128, b: 0, a: 255 };
-                const purple: RGBA = { r: 128, g: 0, b: 128, a: 255 };
-                const yellow: RGBA = { r: 255, g: 255, b: 0, a: 255 };
-                const cyan: RGBA = { r: 0, g: 255, b: 255, a: 255 };
-
-                const radius = 80;
-
-                // 1. Красный круг с белой обводкой
-                for (let y = -radius; y <= radius; y++) {
-                    for (let x = -radius; x <= radius; x++) {
-                        if (x * x + y * y <= radius * radius) {
-                            const px = cx + x;
-                            const py = cy + y;
-                            if (px >= 0 && px < w && py >= 0 && py < h) {
-                                r.setPixel(px, py, red);
-                            }
-                        }
+                // Рисуем рамку вокруг выбранной фигуры
+                if (selectedId) {
+                    const selectedShape = shapesRef.current.find(s => s.id === selectedId);
+                    if (selectedShape) {
+                        const bounds = selectedShape.getBounds();
+                        const selectionColor: RGBA = { r: 255, g: 215, b: 0, a: 255 };
+                        const padding = 8;
+                        // Рисуем пунктирную рамку
+                        r.strokePolygon([
+                            { x: bounds.minX - padding, y: bounds.minY - padding },
+                            { x: bounds.maxX + padding, y: bounds.minY - padding },
+                            { x: bounds.maxX + padding, y: bounds.maxY + padding },
+                            { x: bounds.minX - padding, y: bounds.maxY + padding },
+                        ], selectionColor, 3);
                     }
                 }
-                r.strokeCircle(cx, cy, radius, white, 5);
-
-                //  2. Тест прозрачности через blendPixel
-                const squareSize = 100;
-                const squareX = cx - 200;
-                const squareY = cy - 50;
-
-                // Синий квадрат
-                for (let y = 0; y < squareSize; y++) {
-                    for (let x = 0; x < squareSize; x++) {
-                        const px = squareX + x;
-                        const py = squareY + y;
-                        if (px >= 0 && px < w && py >= 0 && py < h) {
-                            r.setPixel(px, py, solidBlue);
-                        }
-                    }
-                }
-
-                // Полупрозрачный красный круг через blendPixel
-                const testRadius = 40;
-                const testCx = squareX + squareSize - 20;
-                const testCy = squareY + squareSize / 2;
-
-                for (let y = -testRadius; y <= testRadius; y++) {
-                    for (let x = -testRadius; x <= testRadius; x++) {
-                        if (x * x + y * y <= testRadius * testRadius) {
-                            const px = testCx + x;
-                            const py = testCy + y;
-                            if (px >= 0 && px < w && py >= 0 && py < h) {
-                                r.blendPixel(px, py, semiRed, 1);
-                            }
-                        }
-                    }
-                }
-
-                //  3. Синий треугольник
-                const triangle = [
-                    { x: cx - 150, y: cy + 100 },
-                    { x: cx - 50, y: cy + 200 },
-                    { x: cx - 250, y: cy + 200 },
-                ];
-                r.fillPolygon(triangle, blue);
-                r.strokePolygon(triangle, white, 2);
-
-                //  4. Ломаные линии
-                const orangePolyline = [
-                    { x: cx + 50, y: cy + 100 },
-                    { x: cx + 120, y: cy + 130 },
-                    { x: cx + 180, y: cy + 100 },
-                    { x: cx + 220, y: cy + 150 },
-                    { x: cx + 280, y: cy + 120 },
-                ];
-                drawPolyline(r, orangePolyline, orange, 10);
-
-                const cyanPolyline = [
-                    { x: cx + 50, y: cy + 150 },
-                    { x: cx + 120, y: cy + 180 },
-                    { x: cx + 180, y: cy + 150 },
-                    { x: cx + 220, y: cy + 200 },
-                    { x: cx + 280, y: cy + 170 },
-                ];
-                drawPolyline(r, cyanPolyline, cyan, 15);
-
-                //  5. Пятиугольник
-                const pentagonRadius = 50;
-                const pentagonCenterX = cx + 180;
-                const pentagonCenterY = cy - 100;
-                const pentagon: { x: number; y: number }[] = [];
-                for (let i = 0; i < 5; i++) {
-                    const angle = (i * 72 * Math.PI / 180);
-                    pentagon.push({
-                        x: pentagonCenterX + Math.cos(angle) * pentagonRadius,
-                        y: pentagonCenterY + Math.sin(angle) * pentagonRadius,
-                    });
-                }
-                r.fillPolygon(pentagon, purple);
-                r.strokePolygon(pentagon, yellow, 2);
             }
             r?.commit();
             animationId = requestAnimationFrame(frame);
@@ -167,7 +169,7 @@ export const CanvasScene = ({ lineAlg }: CanvasSceneProps) => {
             ro.disconnect();
             renderer.dispose();
         };
-    }, [lineAlg]);
+    }, [lineAlg, selectedId]);
 
     return (
         <div
@@ -184,20 +186,24 @@ export const CanvasScene = ({ lineAlg }: CanvasSceneProps) => {
                 style={{
                     width: '100%',
                     height: '100%',
-                    display: 'block'
+                    display: 'block',
+                    cursor: 'pointer'
                 }}
+                onClick={handleCanvasClick}
             />
             <div style={{
                 position: 'absolute',
-                bottom: 0,
-                left: 0,
-                backgroundColor: 'rgba(0,0,0,0.7)',
-                color: 'lime',
-                padding: '4px 8px',
+                bottom: 8,
+                left: 8,
+                backgroundColor: 'rgba(0,0,0,0.8)',
+                color: '#a5f3c3',
+                padding: '6px 12px',
                 fontSize: '11px',
                 fontFamily: 'monospace',
+                borderRadius: '6px',
                 zIndex: 100,
-                pointerEvents: 'none'
+                pointerEvents: 'none',
+                border: '1px solid #334155'
             }}>
                 {debug} | {lineAlg === 'wu' ? 'Сглаженные (Ву)' : 'Чёткие (Брезенхем)'}
             </div>

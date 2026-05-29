@@ -1,6 +1,6 @@
 // src/lib/math/mat3.test.ts
 import { test, expect } from "vitest";
-import { mat3, type Mat3, EPS } from "./mat3";
+import { mat3, type Mat3 } from "./mat3";
 
 function expectMatCloseTo(actual: Mat3, expected: Mat3, eps = 1e-9) {
     for (let i = 0; i < 9; i++) {

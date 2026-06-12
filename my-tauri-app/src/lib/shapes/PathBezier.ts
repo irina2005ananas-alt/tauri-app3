@@ -57,6 +57,7 @@ export class PathBezier extends Shape {
         }
     }
 
+    // ========== Catmull-Rom to Bezier ==========
     private catmullRomToBezier(p0: Point2D, p1: Point2D, p2: Point2D, p3: Point2D): { p0: Point2D, p1: Point2D, p2: Point2D, p3: Point2D } {
         const tension = 0.5;
         return {
@@ -101,20 +102,49 @@ export class PathBezier extends Shape {
         return segments;
     }
 
-    private getBezierSegments(): { p0: Point2D, p1: Point2D, p2: Point2D, p3: Point2D }[] {
+    private getBezierSegmentsSmooth(): { p0: Point2D, p1: Point2D, p2: Point2D, p3: Point2D }[] {
         const segments: { p0: Point2D, p1: Point2D, p2: Point2D, p3: Point2D }[] = [];
         const n = this.points.length;
 
-        for (let i = 0; i + 3 < n; i += 3) {
-            segments.push({
-                p0: this.points[i],
-                p1: this.points[i + 1],
-                p2: this.points[i + 2],
-                p3: this.points[i + 3]
-            });
+        if (n < 2) return segments;
+
+        for (let i = 0; i < n - 1; i++) {
+            const pPrev = i > 0 ? this.points[i - 1] : (this.closed ? this.points[n - 1] : this.points[i]);
+            const p0 = this.points[i];
+            const p1 = this.points[i + 1];
+            const pNext = i + 2 < n ? this.points[i + 2] : (this.closed ? this.points[0] : this.points[i + 1]);
+
+            // Коэффициент гладкости (tension = 0.5)
+            const tension = 0.5;
+
+            const cp1: Point2D = {
+                x: p0.x + (p1.x - pPrev.x) * tension / 2,
+                y: p0.y + (p1.y - pPrev.y) * tension / 2
+            };
+
+            const cp2: Point2D = {
+                x: p1.x - (pNext.x - p0.x) * tension / 2,
+                y: p1.y - (pNext.y - p0.y) * tension / 2
+            };
+
+            segments.push({ p0, p1: cp1, p2: cp2, p3: p1 });
         }
 
         return segments;
+    }
+
+    // Вычисление точки на кубической кривой Безье
+    private evalCubicBezier(t: number, p0: Point2D, p1: Point2D, p2: Point2D, p3: Point2D): Point2D {
+        const mt = 1 - t;
+        const mt2 = mt * mt;
+        const mt3 = mt2 * mt;
+        const t2 = t * t;
+        const t3 = t2 * t;
+
+        return {
+            x: mt3 * p0.x + 3 * mt2 * t * p1.x + 3 * mt * t2 * p2.x + t3 * p3.x,
+            y: mt3 * p0.y + 3 * mt2 * t * p1.y + 3 * mt * t2 * p2.y + t3 * p3.y
+        };
     }
 
     getLocalFlattenedPoints(): Point2D[] {
@@ -124,39 +154,28 @@ export class PathBezier extends Shape {
         const result: Point2D[] = [];
 
         if (this.mode === 'polyline') {
+            // Прямые линии между точками
             for (const p of this.points) {
                 result.push({ ...p });
             }
         } else if (this.mode === 'bezier') {
-            const segments = this.getBezierSegments();
+            // Гладкие сегменты между соседними точками (как у одногруппницы)
+            const segments = this.getBezierSegmentsSmooth();
             for (const seg of segments) {
                 for (let i = 0; i <= this.segmentsPerCurve; i++) {
                     const t = i / this.segmentsPerCurve;
-                    const mt = 1 - t;
-                    const mt2 = mt * mt;
-                    const mt3 = mt2 * mt;
-                    const t2 = t * t;
-                    const t3 = t2 * t;
-
-                    const x = mt3 * seg.p0.x + 3 * mt2 * t * seg.p1.x + 3 * mt * t2 * seg.p2.x + t3 * seg.p3.x;
-                    const y = mt3 * seg.p0.y + 3 * mt2 * t * seg.p1.y + 3 * mt * t2 * seg.p2.y + t3 * seg.p3.y;
-                    result.push({ x, y });
+                    const point = this.evalCubicBezier(t, seg.p0, seg.p1, seg.p2, seg.p3);
+                    result.push(point);
                 }
             }
         } else if (this.mode === 'catmull') {
+            // Catmull-Rom сплайн
             const segments = this.getCatmullBezierSegments();
             for (const seg of segments) {
                 for (let i = 0; i <= this.segmentsPerCurve; i++) {
                     const t = i / this.segmentsPerCurve;
-                    const mt = 1 - t;
-                    const mt2 = mt * mt;
-                    const mt3 = mt2 * mt;
-                    const t2 = t * t;
-                    const t3 = t2 * t;
-
-                    const x = mt3 * seg.p0.x + 3 * mt2 * t * seg.p1.x + 3 * mt * t2 * seg.p2.x + t3 * seg.p3.x;
-                    const y = mt3 * seg.p0.y + 3 * mt2 * t * seg.p1.y + 3 * mt * t2 * seg.p2.y + t3 * seg.p3.y;
-                    result.push({ x, y });
+                    const point = this.evalCubicBezier(t, seg.p0, seg.p1, seg.p2, seg.p3);
+                    result.push(point);
                 }
             }
         }

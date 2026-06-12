@@ -14,10 +14,10 @@ interface ControlPointHandle {
 }
 
 
-//    'polyline' - ломаная (5 точек)
-//    'bezier'   - кубические кривые Безье (7 точек = 2 сегмента)
-//    'catmull'  - гладкий сплайн через все точки (5 точек)
-const PATH_MODE: 'polyline' | 'bezier' | 'catmull' = 'bezier';
+//    'polyline' - ломаная
+//    'bezier'   - кубические кривые Безье
+//    'catmull'  - гладкий сплайн через все точки
+const PATH_MODE: 'polyline' | 'bezier' | 'catmull' = 'catmull';
 
 
 export const CanvasScene = ({ lineAlg }: CanvasSceneProps) => {
@@ -109,37 +109,37 @@ export const CanvasScene = ({ lineAlg }: CanvasSceneProps) => {
         cubicBezier.strokeWidth = 4;
         shapes.push(cubicBezier);
 
-        // 7. PathBezier (желтый) - РЕЖИМ МЕНЯЕТСЯ ЧЕРЕЗ PATH_MODE
-        // Для режима 'bezier' нужно количество точек = 3n+1 (4, 7, 10, 13...)
-        // 7 точек = 2 сегмента Безье (без дублирования средней точки)
-        const pathPoints = PATH_MODE === 'bezier'
-            ? [  // 7 точек для bezier (2 полных сегмента)
-                { x: -120, y: 20 },  // P0 - начало сегмента 1
-                { x: -80, y: -30 },  // P1 - управляющая 1
-                { x: -40, y: -10 },  // P2 - управляющая 2
-                { x: 0, y: 10 },     // P3 - конец сегмента 1 / начало сегмента 2
-                { x: 40, y: 30 },    // P1 - управляющая 1 (для сегмента 2)
-                { x: 80, y: 20 },    // P2 - управляющая 2 (для сегмента 2)
-                { x: 120, y: -10 }   // P3 - конец сегмента 2
-            ]
-            : [  // 5 точек для polyline и catmull
-                { x: -120, y: 20 },
-                { x: -60, y: -30 },
-                { x: 0, y: 10 },
-                { x: 60, y: 40 },
-                { x: 120, y: -10 }
-            ];
 
-        const path = new PathBezier(
-            pathPoints,
-            PATH_MODE,
-            false  // замкнутый? (false - открытый)
-        );
+        const pathPoints = [
+            { x: -120, y: 20 },
+            { x: -60, y: -30 },
+            { x: 0, y: 120 },
+            { x: 60, y: -50 },
+            { x: 120, y: -10 }
+        ];
+
+        const path = new PathBezier(pathPoints, PATH_MODE, true);
         path.transform.x = 700;
         path.transform.y = 300;
         path.strokeStyle = '#fbbf24';
         path.strokeWidth = 4;
         shapes.push(path);
+        // Цветочек с 8 лепестками (24 точки = 8 лепестков * 3 точки на лепесток)
+        const flowerPoints = [
+            // Лепесток 1 (верх)
+            { x: -120, y: 20 },
+            { x: -60, y: -30 },
+            { x: 0, y: 120 },
+            { x: 60, y: -50 },
+            { x: 120, y: -10 }
+        ];
+
+        const flowerPath = new PathBezier(flowerPoints, PATH_MODE, true);
+        flowerPath.transform.x = 850;
+        flowerPath.transform.y = 400;
+        flowerPath.strokeStyle = '#ec4899';
+        flowerPath.strokeWidth = 3;
+        shapes.push(flowerPath);
 
         shapesRef.current = shapes;
     }, []);

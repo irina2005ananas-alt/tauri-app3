@@ -1,101 +1,87 @@
-import { Shape, type Bounds } from './Shape';
-import type { RasterRenderer, RGBA } from '../raster/RasterRenderer';
-import type { Point2D } from '../math/mat3';
+import { Shape } from './Shape';
+import type { Transform, Bounds, Point, IRenderer } from './types';
 
 export class Oval extends Shape {
-    rx: number; // радиус по X
-    ry: number; // радиус по Y
+    public radiusX: number;
+    public radiusY: number;
 
-    constructor(rx: number = 50, ry: number = 30, id?: string) {
-        super(id);
-        this.rx = rx;
-        this.ry = ry;
+    constructor(id: string, transform: Transform, radiusX: number, radiusY: number) {
+        super(id, transform);
+        this.radiusX = radiusX;
+        this.radiusY = radiusY;
     }
 
-    protected createClone(): Shape {
-        return new Oval(this.rx, this.ry, this.id);
-    }
-
-    // Получить точки эллипса в локальных координатах
-    private getLocalPoints(segments: number = 48): Point2D[] {
-        const points: Point2D[] = [];
-        for (let i = 0; i <= segments; i++) {
-            const angle = (i * 2 * Math.PI / segments);
-            points.push({
-                x: Math.cos(angle) * this.rx,
-                y: Math.sin(angle) * this.ry
-            });
-        }
-        return points;
-    }
-
-    // Получить точки эллипса в экранных координатах
-    getDevicePoints(segments: number = 48): Point2D[] {
-        return this.getLocalPoints(segments).map(p => this.transformPointToDevice(p.x, p.y));
-    }
-
-    drawRaster(r: RasterRenderer): void {
-        const points = this.getDevicePoints();
-        const fillColor = this.colorToRGBA(this.fillStyle, this.fillOpacity);
-        const strokeColor = this.colorToRGBA(this.strokeStyle, this.strokeOpacity);
-
-        // Рисуем заливку
-        r.fillPolygon(points, fillColor);
-
-        // Рисуем обводку
-        if (this.strokeWidth > 0) {
-            r.strokePolygon(points, strokeColor, this.strokeWidth);
-        }
-    }
-
-    hitTest(px: number, py: number): boolean {
-        const local = this.transformPointToLocal(px, py);
-        if (!local) return false;
-
-        // Уравнение эллипса: (x/rx)^2 + (y/ry)^2 <= 1
-        // Используем небольшой допуск для граничных случаев (0.01 вместо 0.1)
-        const tolerance = 0.01;
-        const normalized = (local.x * local.x) / (this.rx * this.rx) +
-            (local.y * local.y) / (this.ry * this.ry);
-
-        return normalized <= 1 + tolerance;
-    }
-
-    getLocalBounds(): Bounds {
+    override getLocalBounds(): Bounds {
         return {
-            minX: -this.rx,
-            minY: -this.ry,
-            maxX: this.rx,
-            maxY: this.ry
+            minX: -this.radiusX,
+            minY: -this.radiusY,
+            maxX: this.radiusX,
+            maxY: this.radiusY,
         };
     }
 
-    getBounds(): Bounds {
-        const points = this.getDevicePoints();
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-
-        for (const p of points) {
-            minX = Math.min(minX, p.x);
-            minY = Math.min(minY, p.y);
-            maxX = Math.max(maxX, p.x);
-            maxY = Math.max(maxY, p.y);
-        }
-
-        return { minX, minY, maxX, maxY };
+    override getBounds(): Bounds {
+        const angles = [0, Math.PI / 2, Math.PI, 3 * Math.PI / 2];
+        const pts = angles.map(a => {
+            const lx = this.radiusX * Math.cos(a);
+            const ly = this.radiusY * Math.sin(a);
+            return this.transformPointToDevice(lx, ly);
+        });
+        const xs = pts.map(p => p.x);
+        const ys = pts.map(p => p.y);
+        return {
+            minX: Math.min(...xs),
+            minY: Math.min(...ys),
+            maxX: Math.max(...xs),
+            maxY: Math.max(...ys),
+        };
     }
 
-    toJSON(): object {
+    override draw(r: IRenderer): void {
+        const steps = 64;
+        const points: Point[] = [];
+        for (let i = 0; i <= steps; i++) {
+            const t = (i / steps) * 2 * Math.PI;
+            const lx = this.radiusX * Math.cos(t);
+            const ly = this.radiusY * Math.sin(t);
+            points.push(this.transformPointToDevice(lx, ly));
+        }
+        const fill = this.getEffectiveFillColor();
+        if (fill) r.fillPolygon(points, fill);
+        const stroke = this.getEffectiveStrokeColor();
+        if (stroke && this.strokeWidth > 0) {
+            r.strokePolygon(points, stroke, this.strokeWidth);
+        }
+    }
+
+    override hitTest(px: number, py: number): boolean {
+        const local = this.transformPointToLocal(px, py);
+        if (!local) return false;
+        const nx = local.x / this.radiusX;
+        const ny = local.y / this.radiusY;
+        return nx * nx + ny * ny <= 1;
+    }
+
+    override clone(): Oval {
+        const cloned = new Oval(this.id + '_copy', { ...this.transform }, this.radiusX, this.radiusY);
+        cloned.fillColor = this.fillColor ? { ...this.fillColor } : null;
+        cloned.fillOpacity = this.fillOpacity;
+        cloned.strokeColor = this.strokeColor ? { ...this.strokeColor } : null;
+        cloned.strokeWidth = this.strokeWidth;
+        cloned.strokeOpacity = this.strokeOpacity;
+        return cloned;
+    }
+
+    override toJSON(): any {
         return {
-            type: 'Oval',
             id: this.id,
-            rx: this.rx,
-            ry: this.ry,
+            type: 'oval',
             transform: { ...this.transform },
-            fillStyle: this.fillStyle,
-            fillOpacity: this.fillOpacity,
-            strokeStyle: this.strokeStyle,
+            radiusX: this.radiusX,
+            radiusY: this.radiusY,
+            fillStyle: this.fillColor ? `rgba(${this.fillColor.r},${this.fillColor.g},${this.fillColor.b},${this.fillOpacity})` : null,
+            strokeStyle: this.strokeColor ? `rgba(${this.strokeColor.r},${this.strokeColor.g},${this.strokeColor.b},${this.strokeOpacity})` : null,
             strokeWidth: this.strokeWidth,
-            strokeOpacity: this.strokeOpacity
         };
     }
 }

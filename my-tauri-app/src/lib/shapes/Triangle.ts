@@ -1,71 +1,59 @@
-import { Shape, type Bounds } from './Shape';
-import type { RasterRenderer, RGBA } from '../raster/RasterRenderer';
-import type { Point2D } from '../math/mat3';
+import { Shape } from './Shape';
+import type { Transform, Bounds, Point, IRenderer } from './types';
 
 export class Triangle extends Shape {
-    p0: Point2D;
-    p1: Point2D;
-    p2: Point2D;
+    public p0: Point;
+    public p1: Point;
+    public p2: Point;
 
-    constructor(p0?: Point2D, p1?: Point2D, p2?: Point2D, id?: string) {
-        super(id);
+    constructor(id: string, transform: Transform, p0: Point, p1: Point, p2: Point) {
+        super(id, transform);
+        this.p0 = p0;
+        this.p1 = p1;
+        this.p2 = p2;
+    }
 
-        if (p0 && p1 && p2) {
-            this.p0 = p0;
-            this.p1 = p1;
-            this.p2 = p2;
-        } else {
-            this.p0 = { x: -50, y: 30 };
-            this.p1 = { x: 50, y: 30 };
-            this.p2 = { x: 0, y: -40 };
+    override getLocalBounds(): Bounds {
+        const pts = [this.p0, this.p1, this.p2];
+        const xs = pts.map(p => p.x);
+        const ys = pts.map(p => p.y);
+        return {
+            minX: Math.min(...xs),
+            minY: Math.min(...ys),
+            maxX: Math.max(...xs),
+            maxY: Math.max(...ys),
+        };
+    }
+
+    override getBounds(): Bounds {
+        const device = [this.p0, this.p1, this.p2].map(p => this.transformPointToDevice(p.x, p.y));
+        const xs = device.map(p => p.x);
+        const ys = device.map(p => p.y);
+        return {
+            minX: Math.min(...xs),
+            minY: Math.min(...ys),
+            maxX: Math.max(...xs),
+            maxY: Math.max(...ys),
+        };
+    }
+
+    override draw(r: IRenderer): void {
+        const device = [this.p0, this.p1, this.p2].map(p => this.transformPointToDevice(p.x, p.y));
+
+        const fill = this.getEffectiveFillColor();
+        if (fill) r.fillPolygon(device, fill);
+
+        const stroke = this.getEffectiveStrokeColor();
+        if (stroke && this.strokeWidth > 0) {
+            r.strokePolygon(device, stroke, this.strokeWidth);
         }
     }
 
-    protected createClone(): Shape {
-        return new Triangle(
-            { ...this.p0 },
-            { ...this.p1 },
-            { ...this.p2 },
-            this.id
-        );
-    }
-
-    getLocalVertices(): Point2D[] {
-        return [this.p0, this.p1, this.p2];
-    }
-
-    getDeviceVertices(): Point2D[] {
-        return this.getLocalVertices().map(v => this.transformPointToDevice(v.x, v.y));
-    }
-
-    getControlPoints(): Point2D[] {
-        return [this.p0, this.p1, this.p2];
-    }
-
-    setControlPoint(index: number, point: Point2D): void {
-        switch (index) {
-            case 0: this.p0 = { ...point }; break;
-            case 1: this.p1 = { ...point }; break;
-            case 2: this.p2 = { ...point }; break;
-        }
-    }
-
-    private isLeft(p: Point2D, a: Point2D, b: Point2D): number {
+    private isLeft(p: Point, a: Point, b: Point): number {
         return (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
     }
 
-    drawRaster(r: RasterRenderer): void {
-        const vertices = this.getDeviceVertices();
-        const fillColor = this.colorToRGBA(this.fillStyle, this.fillOpacity);
-        const strokeColor = this.colorToRGBA(this.strokeStyle, this.strokeOpacity);
-
-        r.fillPolygon(vertices, fillColor);
-        if (this.strokeWidth > 0) {
-            r.strokePolygon(vertices, strokeColor, this.strokeWidth);
-        }
-    }
-
-    hitTest(px: number, py: number): boolean {
+    override hitTest(px: number, py: number): boolean {
         const local = this.transformPointToLocal(px, py);
         if (!local) return false;
 
@@ -79,49 +67,33 @@ export class Triangle extends Shape {
         return !(hasNeg && hasPos);
     }
 
-    getLocalBounds(): Bounds {
-        const verts = this.getLocalVertices();
-        let minX = Infinity, minY = Infinity;
-        let maxX = -Infinity, maxY = -Infinity;
-
-        for (const v of verts) {
-            minX = Math.min(minX, v.x);
-            minY = Math.min(minY, v.y);
-            maxX = Math.max(maxX, v.x);
-            maxY = Math.max(maxY, v.y);
-        }
-
-        return { minX, minY, maxX, maxY };
+    override clone(): Triangle {
+        const cloned = new Triangle(
+            this.id + '_copy',
+            { ...this.transform },
+            { ...this.p0 },
+            { ...this.p1 },
+            { ...this.p2 }
+        );
+        cloned.fillColor = this.fillColor ? { ...this.fillColor } : null;
+        cloned.fillOpacity = this.fillOpacity;
+        cloned.strokeColor = this.strokeColor ? { ...this.strokeColor } : null;
+        cloned.strokeWidth = this.strokeWidth;
+        cloned.strokeOpacity = this.strokeOpacity;
+        return cloned;
     }
 
-    getBounds(): Bounds {
-        const vertices = this.getDeviceVertices();
-        let minX = Infinity, minY = Infinity;
-        let maxX = -Infinity, maxY = -Infinity;
-
-        for (const v of vertices) {
-            minX = Math.min(minX, v.x);
-            minY = Math.min(minY, v.y);
-            maxX = Math.max(maxX, v.x);
-            maxY = Math.max(maxY, v.y);
-        }
-
-        return { minX, minY, maxX, maxY };
-    }
-
-    toJSON(): object {
+    override toJSON(): any {
         return {
-            type: 'Triangle',
             id: this.id,
+            type: 'triangle',
+            transform: { ...this.transform },
             p0: { ...this.p0 },
             p1: { ...this.p1 },
             p2: { ...this.p2 },
-            transform: { ...this.transform },
-            fillStyle: this.fillStyle,
-            fillOpacity: this.fillOpacity,
-            strokeStyle: this.strokeStyle,
+            fillStyle: this.fillColor ? `rgba(${this.fillColor.r},${this.fillColor.g},${this.fillColor.b},${this.fillOpacity})` : null,
+            strokeStyle: this.strokeColor ? `rgba(${this.strokeColor.r},${this.strokeColor.g},${this.strokeColor.b},${this.strokeOpacity})` : null,
             strokeWidth: this.strokeWidth,
-            strokeOpacity: this.strokeOpacity
         };
     }
 }

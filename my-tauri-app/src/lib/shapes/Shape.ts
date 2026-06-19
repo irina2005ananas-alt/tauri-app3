@@ -1,56 +1,30 @@
-import { mat3, type Mat3, type Point2D } from '../math/mat3';
-import type { RasterRenderer, RGBA } from '../raster/RasterRenderer';
-
-export interface Transform {
-    x: number;
-    y: number;
-    rotation: number; // радианы
-    scaleX: number;
-    scaleY: number;
-}
-
-export interface Bounds {
-    minX: number;
-    minY: number;
-    maxX: number;
-    maxY: number;
-}
+import { mat3, type Mat3 } from '../math/mat3';
+import type { RGBA } from '../raster/RasterRenderer';
+import type { Transform, Bounds, Point, IRenderer } from './types';
 
 export abstract class Shape {
-    id: string;
-    transform: Transform;
-    fillStyle: string;
-    fillOpacity: number;
-    strokeStyle: string;
-    strokeWidth: number;
-    strokeOpacity: number;
+    public id: string;
+    public transform: Transform;
 
-    constructor(id?: string) {
-        this.id = id || crypto.randomUUID();
-        this.transform = {
-            x: 0,
-            y: 0,
-            rotation: 0,
-            scaleX: 1,
-            scaleY: 1
-        };
-        this.fillStyle = '#3b82f6';
-        this.fillOpacity = 0.5;
-        this.strokeStyle = '#ffffff';
-        this.strokeWidth = 2;
-        this.strokeOpacity = 1;
+    // Стили
+    public fillColor: RGBA | null;
+    public fillOpacity: number;
+    public strokeColor: RGBA | null;
+    public strokeWidth: number;
+    public strokeOpacity: number;
+
+    constructor(id: string, transform: Transform) {
+        this.id = id;
+        this.transform = { ...transform };
+
+        // Значения по умолчанию
+        this.fillColor = { r: 200, g: 200, b: 200, a: 255 };
+        this.fillOpacity = 1.0;
+        this.strokeColor = { r: 0, g: 0, b: 0, a: 255 };
+        this.strokeWidth = 1;
+        this.strokeOpacity = 1.0;
     }
 
-    // Преобразование цвета с учетом opacity
-    protected colorToRGBA(color: string, opacity: number): RGBA {
-        const hex = color.startsWith('#') ? color : `#${color}`;
-        const r = parseInt(hex.slice(1, 3), 16);
-        const g = parseInt(hex.slice(3, 5), 16);
-        const b = parseInt(hex.slice(5, 7), 16);
-        return { r, g, b, a: Math.round(opacity * 255) };
-    }
-
-    // Матрица преобразования из локальных координат в экранные
     getLocalToDeviceMatrix(): Mat3 {
         return mat3.fromTransform(
             this.transform.x,
@@ -61,77 +35,79 @@ export abstract class Shape {
         );
     }
 
-    // Обратная матрица (экранные -> локальные)
     getDeviceToLocalMatrix(): Mat3 | null {
-        return mat3.invert(this.getLocalToDeviceMatrix());
+        const m = this.getLocalToDeviceMatrix();
+        return mat3.invert(m);
     }
 
-    // Преобразование точки из локальных в экранные
-    transformPointToDevice(px: number, py: number): Point2D {
-        return mat3.transformPoint(this.getLocalToDeviceMatrix(), px, py);
+    transformPointToDevice(px: number, py: number): Point {
+        const m = this.getLocalToDeviceMatrix();
+        const res = mat3.transformPoint(m, px, py);
+        return { x: res.x, y: res.y };
     }
 
-    // Преобразование точки из экранных в локальные
-    transformPointToLocal(px: number, py: number): Point2D | null {
+    transformPointToLocal(px: number, py: number): Point | null {
         const inv = this.getDeviceToLocalMatrix();
         if (!inv) return null;
-        return mat3.transformPoint(inv, px, py);
+        const res = mat3.transformPoint(inv, px, py);
+        return { x: res.x, y: res.y };
     }
 
-    // Получить центр фигуры в экранных координатах
-    getCenter(): Point2D {
-        const localBounds = this.getLocalBounds();
-        const centerX = (localBounds.minX + localBounds.maxX) / 2;
-        const centerY = (localBounds.minY + localBounds.maxY) / 2;
-        return this.transformPointToDevice(centerX, centerY);
+    getCenter(): Point {
+        const b = this.getBounds();
+        return {
+            x: (b.minX + b.maxX) / 2,
+            y: (b.minY + b.maxY) / 2,
+        };
     }
 
-    // Изменить границы фигуры (новые границы в экранных координатах)
     resizeFromDeviceAABB(minX: number, minY: number, maxX: number, maxY: number): void {
         const localBounds = this.getLocalBounds();
-        const localW = localBounds.maxX - localBounds.minX;
-        const localH = localBounds.maxY - localBounds.minY;
+        const localWidth = localBounds.maxX - localBounds.minX;
+        const localHeight = localBounds.maxY - localBounds.minY;
 
-        const deviceW = maxX - minX;
-        const deviceH = maxY - minY;
+        if (localWidth === 0 || localHeight === 0) return;
 
-        // Вычисляем новые масштабы
-        const newScaleX = deviceW / localW;
-        const newScaleY = deviceH / localH;
+        const newWidth = maxX - minX;
+        const newHeight = maxY - minY;
 
-        // Вычисляем новый центр в экранных координатах
+        const scaleX = newWidth / localWidth;
+        const scaleY = newHeight / localHeight;
+
         const newCenterX = (minX + maxX) / 2;
         const newCenterY = (minY + maxY) / 2;
 
-        // Обновляем трансформацию
-        this.transform.scaleX = newScaleX;
-        this.transform.scaleY = newScaleY;
         this.transform.x = newCenterX;
         this.transform.y = newCenterY;
+        this.transform.scaleX = scaleX;
+        this.transform.scaleY = scaleY;
     }
 
-    // Установить границы (обертка над resizeFromDeviceAABB)
     setBounds(minX: number, minY: number, maxX: number, maxY: number): void {
         this.resizeFromDeviceAABB(minX, minY, maxX, maxY);
     }
 
-    // Клонировать фигуру
-    clone(): Shape {
-        const clone = this.createClone();
-        clone.transform = { ...this.transform };
-        clone.fillStyle = this.fillStyle;
-        clone.fillOpacity = this.fillOpacity;
-        clone.strokeStyle = this.strokeStyle;
-        clone.strokeWidth = this.strokeWidth;
-        clone.strokeOpacity = this.strokeOpacity;
-        return clone;
+    getEffectiveFillColor(): RGBA | null {
+        if (!this.fillColor) return null;
+        return {
+            ...this.fillColor,
+            a: Math.round(this.fillColor.a * this.fillOpacity),
+        };
     }
 
-    // Абстрактные методы (должны быть реализованы в наследниках)
-    protected abstract createClone(): Shape;
-    abstract drawRaster(r: RasterRenderer): void;
+    getEffectiveStrokeColor(): RGBA | null {
+        if (!this.strokeColor) return null;
+        return {
+            ...this.strokeColor,
+            a: Math.round(this.strokeColor.a * this.strokeOpacity),
+        };
+    }
+
+    // Абстрактные методы
+    abstract draw(r: IRenderer): void;
     abstract hitTest(px: number, py: number): boolean;
     abstract getBounds(): Bounds;
     abstract getLocalBounds(): Bounds;
-    abstract toJSON(): object;
+    abstract clone(): Shape;
+    abstract toJSON(): any;
 }

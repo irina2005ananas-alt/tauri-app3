@@ -1,119 +1,114 @@
-import { Shape, type Bounds } from './Shape';
-import type { RasterRenderer, RGBA } from '../raster/RasterRenderer';
-import type { Point2D } from '../math/mat3';
+import { Shape } from './Shape';
+import type { Transform, Bounds, IRenderer } from './types';
 
 export class Line extends Shape {
-    x1: number;
-    y1: number;
-    x2: number;
-    y2: number;
+    public x1: number;
+    public y1: number;
+    public x2: number;
+    public y2: number;
 
-    constructor(x1: number = -50, y1: number = 0, x2: number = 50, y2: number = 0, id?: string) {
-        super(id);
-        this.x1 = x1;
-        this.y1 = y1;
-        this.x2 = x2;
-        this.y2 = y2;
+    constructor(
+        id: string,
+        transform: Transform,
+        x1: number,
+        y1: number,
+        x2: number,
+        y2: number
+    ) {
+        const cx = (x1 + x2) / 2;
+        const cy = (y1 + y2) / 2;
+        const adjustedTransform = {
+            ...transform,
+            x: transform.x + cx,
+            y: transform.y + cy,
+        };
+        super(id, adjustedTransform);
+        this.x1 = x1 - cx;
+        this.y1 = y1 - cy;
+        this.x2 = x2 - cx;
+        this.y2 = y2 - cy;
     }
 
-    protected createClone(): Shape {
-        return new Line(this.x1, this.y1, this.x2, this.y2, this.id);
+    override getLocalBounds(): Bounds {
+        const minX = Math.min(this.x1, this.x2);
+        const minY = Math.min(this.y1, this.y2);
+        const maxX = Math.max(this.x1, this.x2);
+        const maxY = Math.max(this.y1, this.y2);
+        return { minX, minY, maxX, maxY };
     }
 
-    // Получить конечные точки в локальных координатах
-    private getLocalEndpoints(): Point2D[] {
-        return [
-            { x: this.x1, y: this.y1 },
-            { x: this.x2, y: this.y2 }
-        ];
+    override getBounds(): Bounds {
+        const p1 = this.transformPointToDevice(this.x1, this.y1);
+        const p2 = this.transformPointToDevice(this.x2, this.y2);
+        return {
+            minX: Math.min(p1.x, p2.x),
+            minY: Math.min(p1.y, p2.y),
+            maxX: Math.max(p1.x, p2.x),
+            maxY: Math.max(p1.y, p2.y),
+        };
     }
 
-    // Получить конечные точки в экранных координатах
-    getDeviceEndpoints(): Point2D[] {
-        return this.getLocalEndpoints().map(p => this.transformPointToDevice(p.x, p.y));
-    }
-
-    drawRaster(r: RasterRenderer): void {
-        const [start, end] = this.getDeviceEndpoints();
-        const strokeColor = this.colorToRGBA(this.strokeStyle, this.strokeOpacity);
-
-        if (this.strokeWidth > 0) {
-            r.strokeLine(start.x, start.y, end.x, end.y, strokeColor, this.strokeWidth);
+    override draw(r: IRenderer): void {
+        const p1 = this.transformPointToDevice(this.x1, this.y1);
+        const p2 = this.transformPointToDevice(this.x2, this.y2);
+        const stroke = this.getEffectiveStrokeColor();
+        if (stroke && this.strokeWidth > 0) {
+            r.strokeLine(p1.x, p1.y, p2.x, p2.y, stroke, this.strokeWidth);
         }
     }
 
-    // Расстояние от точки до отрезка
-    private pointToSegmentDistance(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
-        const ax = px - x1;
-        const ay = py - y1;
-        const bx = x2 - x1;
-        const by = y2 - y1;
-
-        const dot = ax * bx + ay * by;
-        const len2 = bx * bx + by * by;
-
-        if (len2 === 0) return Math.hypot(ax, ay);
-
-        let t = dot / len2;
+    private distanceToSegment(px: number, py: number): number {
+        const dx = this.x2 - this.x1;
+        const dy = this.y2 - this.y1;
+        const lenSq = dx * dx + dy * dy;
+        if (lenSq === 0) {
+            return Math.hypot(px - this.x1, py - this.y1);
+        }
+        let t = ((px - this.x1) * dx + (py - this.y1) * dy) / lenSq;
         t = Math.max(0, Math.min(1, t));
-
-        const projX = x1 + t * bx;
-        const projY = y1 + t * by;
-
-        return Math.hypot(px - projX, py - projY);
+        const projx = this.x1 + t * dx;
+        const projy = this.y1 + t * dy;
+        return Math.hypot(px - projx, py - projy);
     }
 
-    hitTest(px: number, py: number): boolean {
+    override hitTest(px: number, py: number): boolean {
         const local = this.transformPointToLocal(px, py);
         if (!local) return false;
+        const dist = this.distanceToSegment(local.x, local.y);
+        const threshold = Math.max(5, this.strokeWidth / 2 + 2);
+        return dist <= threshold;
+    }
 
-        const distance = this.pointToSegmentDistance(
-            local.x, local.y,
-            this.x1, this.y1,
-            this.x2, this.y2
+    override clone(): Line {
+        const cloned = new Line(
+            this.id + '_copy',
+            { ...this.transform },
+            this.x1,
+            this.y1,
+            this.x2,
+            this.y2
         );
-
-        // Упрощенный порог - просто толщина линии в локальных координатах
-        const threshold = Math.max(this.strokeWidth, 5);
-
-        return distance <= threshold;
+        cloned.fillColor = this.fillColor ? { ...this.fillColor } : null;
+        cloned.fillOpacity = this.fillOpacity;
+        cloned.strokeColor = this.strokeColor ? { ...this.strokeColor } : null;
+        cloned.strokeWidth = this.strokeWidth;
+        cloned.strokeOpacity = this.strokeOpacity;
+        return cloned;
     }
 
-    getLocalBounds(): Bounds {
+    override toJSON(): any {
+        const absX1 = this.x1 + this.transform.x;
+        const absY1 = this.y1 + this.transform.y;
+        const absX2 = this.x2 + this.transform.x;
+        const absY2 = this.y2 + this.transform.y;
         return {
-            minX: Math.min(this.x1, this.x2),
-            minY: Math.min(this.y1, this.y2),
-            maxX: Math.max(this.x1, this.x2),
-            maxY: Math.max(this.y1, this.y2)
-        };
-    }
-
-    getBounds(): Bounds {
-        const [start, end] = this.getDeviceEndpoints();
-        const halfWidth = Math.max(this.strokeWidth, 5);
-
-        return {
-            minX: Math.min(start.x, end.x) - halfWidth,
-            minY: Math.min(start.y, end.y) - halfWidth,
-            maxX: Math.max(start.x, end.x) + halfWidth,
-            maxY: Math.max(start.y, end.y) + halfWidth
-        };
-    }
-
-    toJSON(): object {
-        return {
-            type: 'Line',
             id: this.id,
-            x1: this.x1,
-            y1: this.y1,
-            x2: this.x2,
-            y2: this.y2,
+            type: 'line',
             transform: { ...this.transform },
-            fillStyle: this.fillStyle,
-            fillOpacity: this.fillOpacity,
-            strokeStyle: this.strokeStyle,
+            x1: absX1, y1: absY1,
+            x2: absX2, y2: absY2,
+            strokeStyle: this.strokeColor ? `rgba(${this.strokeColor.r},${this.strokeColor.g},${this.strokeColor.b},${this.strokeOpacity})` : null,
             strokeWidth: this.strokeWidth,
-            strokeOpacity: this.strokeOpacity
         };
     }
 }

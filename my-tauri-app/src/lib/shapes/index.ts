@@ -1,4 +1,4 @@
-export { Shape, type Transform, type Bounds } from './Shape';
+export { Shape } from './Shape';
 export { Rect } from './Rect';
 export { Line } from './Line';
 export { Oval } from './Oval';
@@ -6,3 +6,7 @@ export { Triangle } from './Triangle';
 export { QuadraticBezier } from './QuadraticBezier';
 export { CubicBezier } from './CubicBezier';
 export { PathBezier, type PathMode } from './PathBezier';
+export { ShapeFactory } from './ShapeFactory';
+export { ShapeManager } from './ShapeManager';
+export { RendererAdapter } from './RendererAdapter';
+export type { Transform, Bounds, Point, IRenderer } from './types';
